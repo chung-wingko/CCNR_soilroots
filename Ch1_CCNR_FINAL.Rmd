@@ -1,0 +1,1508 @@
+---
+title: "Ch1_CCNR_Final"
+author: "Chung-Wing Ko"
+date: "2024-08-22"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    code_folding: show
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, progress = FALSE)
+```
+
+### Set up ###
+
+```{r}
+#clear workspace
+rm (list =ls())
+setwd("/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/CCProject/Data Analysis/Manuscript")
+
+#load libraries
+library(dplyr) #data cleaning
+library(plyr) #ddply function
+library(tibble) #data cleaning
+library(ggplot2) #plots
+library(MetBrewer) #colour palette
+library("GGally") #correlogram
+library(FactoMineR) # PCA
+library(factoextra) # ggplot2 based visualisation
+library(corrplot) # visualisation of correlation matrix
+library(ggpubr) # graph aesthetics
+library(cowplot) #add density plots to axes
+library(lme4) #mixed models
+library(lmerTest) #p values
+library(LMERConvenienceFunctions) #diagnostic plots
+library(emmeans) #posthoc tukey test
+library(performance) #diff diagnostic plots
+library(patchwork) #annotate multiple plots
+library(stringr) #RDA
+library(ggforce) #abline in lmer
+library(Hmisc) #p values for correlation matrices
+library(vegan) #dataset & NMDS & RDA
+library(ggvegan) #ggplot for vegan
+library(vegan3d) #visualise NMDS 3D
+library(goeveg) #NMDS screeplot
+library(ggrepel) #labels
+library(ggord) #creating ordination plots with ggplot2 - RDA
+library(CCA) #CCA
+
+#import data
+soildata <- read.csv("/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/CCProject/Cleaned Data/Soil Data (all).csv")
+soildata$FT <- as.factor(soildata$FT)
+soildata <- soildata %>% dplyr::select(-sH, -sNa, -sMn, -TotalRootBiomass, -PercentNecro)
+rootdata <- read.csv("/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/CCProject/Cleaned Data/Root Data (all).csv") 
+rootdata <- rootdata %>% dplyr::select(-FT, -rH, -rNa, -rMn) %>% dplyr::rename(PME = RootEnzyme) %>% dplyr::rename(D = AvgDiam)
+
+FT <- soildata %>% dplyr::select(Plot, FT, Direction)
+rootdata <- FT %>% right_join(rootdata)
+rootdata$FT <- as.factor(rootdata$FT)
+
+ECMbasal <- read.csv("/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/CCProject/Cleaned Data/Basal area.csv") %>% dplyr::select(-3)
+
+#add ECM data to both datasets
+soildata <- soildata %>% full_join(ECMbasal)
+rootdata <- rootdata %>% full_join(ECMbasal)
+
+#combine data
+CCNRalldata <- soildata %>% right_join(rootdata, by = c('Plot', 'FT', 'Direction', 'ECM_BA_20'))
+```
+
+### Quick glance
+
+#### Correlograms
+
+```{r}
+#soil plant available and total nutrients
+ggpairs(soildata[,c(11,10,4,13,15,17:19)],
+        columnLabels = c("C", "N", "P", "TOC", "TN", "NO3", "NH4",
+                 "PO4"),
+        aes(color=soildata$FT),
+        upper = list(continuous = wrap('cor', size = 3)),
+        lower = list(continuous = wrap("smooth")),
+        diag = list(continuous = wrap("densityDiag", alpha = 0.3)),
+        title = "Correlogram of Soil Nutrient Parameters") + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + theme_bw()
+
+#soil cations
+ggpairs(soildata[,c(5:9)],
+        columnLabels = c("Al", "Ca", "Fe", "K", "Mg"),
+        aes(color=soildata$FT),
+        upper = list(continuous = wrap('cor', size = 3)),
+        lower = list(continuous = wrap("smooth")),
+        diag = list(continuous = wrap("densityDiag", alpha = 0.3)),
+        title = "Correlogram of Soil Cations") + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + theme_bw()
+
+#root nutrients/cations
+ggpairs(rootdata[,c(13, 12, 19, 14:18)], #check columns
+        columnLabels = c("C", "N", "P", "Al", "Ca", "Fe", "K", "Mg"),
+        aes(color=rootdata$FT),
+        upper = list(continuous = wrap('cor', size = 3)),
+        lower = list(continuous = wrap("smooth")),
+        diag = list(continuous = wrap("densityDiag", alpha = 0.3)),
+        title = "Correlogram of Root Nutrients and Cations") + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + theme_bw()
+
+#root morphology
+ggpairs(rootdata[,c(4:5, 7:11)], #check columns
+        columnLabels = c("PME", "Biomass", "SRL", "SRA", "D", "RTD", "# Tips"),
+        aes(color=rootdata$FT),
+        upper = list(continuous = wrap('cor', size = 3)),
+        lower = list(continuous = wrap("smooth")),
+        diag = list(continuous = wrap("densityDiag", alpha = 0.3)),
+        title = "Correlogram of Root Morphological Traits") + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + theme_bw()
+
+#phosphorus measurements (PME vs root P and soil P)
+ggpairs(CCNRalldata[,c(4, 19, 20, 37, 22)],
+        columnLabels = c("sP", "PO4", "PO4_Microbe","rP", "PME"),
+        aes(color=CCNRalldata$FT),
+        upper = list(continuous = wrap('cor', size = 3)),
+        lower = list(continuous = wrap("smooth")),
+        diag = list(continuous = wrap("densityDiag", alpha = 0.3)),
+        title = "Correlogram of Phosphorus Measurements") + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + theme_bw()
+```
+
+#### Removing outliers
+
+```{r}
+#soil cations
+boxplot(soildata$sMg)
+soildata$sMg[soildata$sMg > 0.1] <- NA
+boxplot(soildata$sK)
+soildata$sK[soildata$sK > 0.15] <- NA
+```
+
+## Hypothesis I: Soil nutrients
+
+**Questions:**
+**1. What nutrients are limiting in Singapore's soils?**
+**2. How do soil nutrient values compare to global values?**
+**3. Do soil nutrients/cations differ across forest types?**
+
+**Hypothesis: Singapore’s soils are dominantly phosphorus limited, but will have differences in plant-available nutrients due to past land-use change (especially in nitrogen, which can be leached from the soil based on past agriculture/clearing/burning). We thus predict FT 2 and 3 to be more similar in nutrient values due to the land history.**
+
+### Nutrient limitations
+
+We will first look at all mean soil nutrient/cation values, then compare these to global/regional values. We will also calculate root N:P ratios and microbial nutrient ratios to evaluate limiting nutrients. 
+
+#### All means
+
+```{r}
+allmeans <- as.data.frame(CCNRalldata %>% summarise_if(is.numeric, mean, na.rm = TRUE))
+allmeans <- as.data.frame(t(allmeans)) %>% tibble::rownames_to_column("var") %>% dplyr::rename(mean = V1)
+
+allsd <- as.data.frame(CCNRalldata %>% summarise_if(is.numeric, sd, na.rm = TRUE))
+allsd <- as.data.frame(t(allsd)) %>% tibble::rownames_to_column("var") %>% dplyr::rename(sd = V1)
+
+alllength <- as.data.frame(colSums(!is.na(CCNRalldata))) %>% tibble::rownames_to_column("var")
+
+allsummary <- allmeans %>% right_join(allsd) %>% right_join(alllength) %>% dplyr::rename(n = 'colSums(!is.na(CCNRalldata))')
+allsummary$se <- allsummary$sd / sqrt(allsummary$n)
+allsummary
+#write.xlsx(allsummary, "mean_soil_values.xlsx")
+```
+
+### Comparing to literature
+
+##### Soil nutrients
+
+```{r}
+#import data
+lit_soilnutrients <- read.csv("/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/CCProject/Raw Data/Comparing soil nutrients across literature - Soil nutrients.csv")
+
+#relevel studies
+level <- factor(lit_soilnutrients$Location, level = c("This study", "Singapore", "Southeast Asia", "Other tropics"))
+
+#relevel studies
+level_order <- factor(lit_soilnutrients$Study, level = c('This study', 'Chua et al. 2016', 'Sakurai et al. 1998', 'Tange et al. 1998', 'Ohta and Effendi 1992b', 'Yamashita et al. 2003','Zaidey et al. 2010', 'Vitousek and Matson 1988', 'Singh et al. 1991', 'Neil et al. 1997')) %>% na.omit()
+
+#plot
+lit_soilnutrients %>%
+  ggplot(aes(x = level_order, y = Concentration, color = level)) + 
+  geom_point() + facet_wrap(~Nutrient) + 
+  labs(y = "Concentration (g/kg)") + theme_bw() + 
+  theme(axis.title.x = element_blank()) + 
+  theme(axis.text = element_text(angle=45, hjust = 0.95, size = 6)) + 
+  scale_color_manual(values=met.brewer("Egypt", 4)) + 
+  theme(strip.background =element_rect(fill= "#C8BCAA")) +
+  theme(strip.text.x = element_text(size = 20)) +
+  theme(plot.background = element_rect(fill = "#e3d6cbff")) +
+  #theme(panel.background = element_rect(fill = '#e3d6cbff', color = 'black'),
+        #panel.grid.major = element_line(size = 0.07, 
+                                        #linetype = 'solid', colour = "black"),
+        #panel.grid.minor = element_line(size = 0.07, 
+                                        #linetype = 'solid', #colour = "black")) +
+  theme(legend.background = element_rect(fill = "#e3d6cbff"),
+        legend.key = element_rect(fill = "#e3d6cbff", color = NA))
+```
+
+##### Root N:P
+
+```{r}
+#N:P ratio
+rootdata$NP <- rootdata$rN / rootdata$rP
+
+#LMM for N:P
+rNPmodel <- lmer(NP ~ FT + (1|Plot), data = rootdata)
+check_model(rNPmodel)
+anova(rNPmodel, type = 2)
+
+#comparing to global N:P
+ggplot(rootdata, aes(x = NP, fill = FT)) + geom_density(alpha = 0.3) + theme_classic() + 
+  labs(title = "Root N:P Demonstrates P Nutrient Limitation", x = "Root Nitrogen:Phosphorus", y = "Density") + xlim(5,70) +
+  geom_vline(xintercept = 14, color = "blue", linetype = "solid") + 
+  geom_vline(xintercept = 16, color = "red", linetype = "solid") + 
+  theme(plot.background = element_rect(fill = "#e3d6cbff")) + theme(panel.background = element_rect(fill = '#e3d6cbff', color = 'black'))
+
+rootdata$rootNclean <- rootdata$rN *10
+#root N:P
+redfield116 <- geom_abline(slope=1/16, intercept=0)
+redfield120 <- geom_abline(slope=1/20, intercept=0)
+ggplot(rootdata, aes(x=rootNclean, y=rP)) +
+  geom_point(size=2, shape=19) + theme_bw() + 
+   theme(plot.background = element_rect(fill = "#E8DCD0")) + 
+  theme(panel.background = element_rect(fill = '#E8DCD0', 
+                                        color = 'black'),
+        panel.grid.major = element_line(size = 0.07, 
+                                        linetype = 'solid', 
+                                        colour = "black"),
+        panel.grid.minor = element_line(size = 0.07, 
+                                        linetype = 'solid', 
+                                        colour = "black")) +
+  theme(legend.background = element_rect(fill = "#E8DCD0")) + 
+  redfield116 + 
+  redfield120 + 
+  facet_zoom(xlim = c(7,22), ylim = c(0.2,0.75))
+```
+
+##### Microbial stoichiometry
+
+```{r}
+#C:N ratio
+CCNRalldata$CN_Microbe <- CCNRalldata$TOC_Microbe / CCNRalldata$TN_Microbe
+
+#C:P ratio
+CCNRalldata$CP_Microbe <- CCNRalldata$TOC_Microbe / CCNRalldata$PO4_Microbe
+
+#N:P ratio
+CCNRalldata$NP_Microbe <- CCNRalldata$TN_Microbe / CCNRalldata$PO4_Microbe
+
+#microbial stoich: import data
+lit_microbestoich <- read.csv("/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/CCProject/Raw Data/Microbial stoich.csv")
+
+#relevel location
+locationlevel <- factor(lit_microbestoich$Location, level = c("This study", "Tropical broadleaf", "Global"))
+
+#relevel studies
+level <- factor(lit_microbestoich$Study, level = c('This study', 'Gao et al. 2022', 'Cleveland and Liptzin 2007',
+                                                   'Xu et al. 2013'))
+#plot
+lit_microbestoich %>%
+  ggplot(aes(x = level, y = Value, color = locationlevel)) + 
+  geom_point() + facet_wrap(~Ratio) + 
+  labs(y = "Ratio") + theme_bw() + 
+  theme(axis.title.x = element_blank()) + 
+  theme(axis.text = element_text(angle=45, hjust = 0.95, size = 6)) + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  theme(strip.background =element_rect(fill= "#C8BCAA")) +
+  theme(plot.background = element_rect(fill = "#e3d6cbff")) +
+  theme(panel.background = element_rect(fill = '#e3d6cbff', color = 'black'),
+        panel.grid.major = element_line(size = 0.07, 
+                                        linetype = 'solid', colour = "black"),
+        panel.grid.minor = element_line(size = 0.07, 
+                                        linetype = 'solid', colour = "black")) +
+  theme(legend.background = element_rect(fill = "#e3d6cbff"),
+        legend.key = element_rect(fill = "#e3d6cbff", color = NA))
+```
+
+### Soil PCA
+
+Next, we run a soil PCA.
+
+```{r}
+#select only relevant columns 
+soilPCA <- soildata[c(4:11, 13, 15, 17:19)] 
+
+#run PCA
+res.pca.soil <- PCA(soilPCA, scale.unit = TRUE, ncp = 5, graph = FALSE)
+print(res.pca.soil) # view PCA output
+
+# extract eigenvalues
+eig.val.soil <- get_eigenvalue(res.pca.soil)
+# extract variables
+var.soil <- get_pca_var(res.pca.soil)
+# extract PCA individuals/observations
+ind.soil <- get_pca_ind(res.pca.soil)
+
+#scree plot
+fviz_eig(res.pca.soil, addlabels = TRUE, ylim = c(0, 50), barfill = "#a3c585", barcolor = "black") + theme_classic() + ggtitle("Scree Plot (Soil PCA)") 
+
+# visualise contribution of variables to PCs
+corrplot(var.soil$contrib, is.corr=FALSE, method = "circle", col = met.brewer("VanGogh3"), tl.col = "black", cl.align.text = "l" )
+
+#PCA -- variables
+fviz_pca_var(res.pca.soil, col.var = "contrib", 
+             gradient.cols = met.brewer("Tam")) + 
+  labs(colour = "Contribution (%)", x = "PC1 (44.9%)", y = "PC2 (12.7%)", 
+       title = "Soil PCA (Variables Only)")
+
+#PCA -- individuals
+fviz_pca_ind(res.pca.soil, col.ind = soildata$FT, geom = "point",
+             pointsize = soildata$ECM_BA_20) +
+  labs(colour = "Forest Type", x = "PC1 (44.9)", y = "PC2 (12.7%)", 
+       title = "Soil PCA (Individual Plots)") +
+   labs(size = "ECM Basal Area (%)") +
+  scale_shape_manual(name = "Forest Type", values = c(19, 19, 19)) + 
+  scale_color_manual(values=met.brewer("Egypt", 3))
+
+#PCA -- biplot
+soilbiplot <- fviz_pca_biplot(res.pca.soil,
+                col.ind = soildata$FT,
+                col.var = "black",
+                geom = "point",
+                pointsize = soildata$ECM_BA_20,
+                addEllipses = TRUE, 
+                label = "var",
+                labelsize = 6,
+                repel = TRUE,
+                mean.point = FALSE,
+                legend.title = "Forest Type") + 
+  labs(x = "PC1 (44.9%)", y = "PC2 (12.7%)", title = "Soil PCA (Biplot)") +
+  labs(size = "ECM Basal Area (%)") +
+  scale_shape_manual(name = "Forest Type", values = c(19, 19, 19)) + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) +
+  theme(axis.text=element_text(size=14), axis.title=element_text(size=18)) +
+  theme(legend.title = element_text(size=18), legend.text = element_text(size=14))
+soilbiplot
+```
+
+### LMMs of soil nutrients across FT
+
+Linear mixed models will be run on all soil variables. Linear mixed models assume independence, linearity, normality, and equal variance. Posthoc tests using Tukey’s HSD method will be run to test for significant differences between forest types. 
+
+```{r}
+soildata$FT <- relevel(soildata$FT, ref = "4")
+
+#Total C
+sCmodel <- lmer(log(sC) ~ FT + (1|Plot), data = soildata)
+check_model(sCmodel)
+anova(sCmodel, type = 2)
+
+#Total N
+sNmodel <- lmer(log(sN) ~ FT + (1|Plot), data = soildata)
+check_model(sNmodel)
+anova(sNmodel, type = 2)
+
+#Total P
+sPmodel <- lmer(log(sP) ~ FT + (1|Plot), data = soildata)
+check_model(sPmodel)
+anova(sPmodel, type = 2)
+
+#TN -- significance
+TNmodel <- lmer(log(TN_NF) ~ FT + (1|Plot), data = soildata)
+check_model(TNmodel)
+anova(TNmodel, type = 2)
+summary(TNmodel)
+0.07690/(0.07690 + 0.05034)
+```
+
+Based on the linear mixed model, there is a statistically significant difference in total dissolved nitrogen between forest types (F(2, 23.246) = 10.657, p = 0.0005148). The response variable was log transformed to fit the assumption of normality of residuals (based on QQ plot).
+
+The random effect of plot explained 60.4% of the variance left over after the variance explained by the prior fixed effect of forest type.
+
+```{r}
+#NO3
+NO3model <- lmer(log(NO3_c) ~ FT + (1|Plot), data = soildata)
+check_model(NO3model)
+anova(NO3model, type = 2)
+
+#NH4
+NH4model <- lmer(log(NH4_c) ~ FT + (1|Plot), data = soildata)
+check_model(NH4model)
+anova(NH4model, type = 2)
+
+#PO4
+PO4model <- lmer(sqrt(PO4_NF) ~ FT + (1|Plot), data = soildata)
+check_model(PO4model)
+anova(PO4model, type = 2)
+
+#Al
+sAlmodel <- lmer((sAl) ~ FT + (1|Plot), data = soildata)
+check_model(sAlmodel)
+anova(sAlmodel, type = 2)
+
+#Ca
+sCamodel <- lmer(log(sCa) ~ FT + (1|Plot), data = soildata)
+check_model(sCamodel)
+anova(sCamodel, type = 2)
+
+#Fe
+sFemodel <- lmer(log(sFe) ~ FT + (1|Plot), data = soildata)
+check_model(sFemodel)
+anova(sFemodel, type = 2)
+
+#K
+sKmodel <- lmer(log(sK) ~ FT + (1|Plot), data = soildata)
+check_model(sKmodel)
+anova(sKmodel, type = 2)
+
+#Mg -- significance
+sMgmodel <- lmer(log(sMg) ~ FT + (1|Plot), data = soildata)
+check_model(sMgmodel)
+anova(sMgmodel, type = 2)
+summary(sMgmodel)
+0.03473/(0.03473 + 0.12711)
+```
+
+Based on the linear mixed model, there is a statistically significant difference in plant available magnesium between forest types (F(2, 30.02) = 3.8094, p = 0.03355). The response variable was log transformed to fit the assumption of normality of residuals (based on QQ plot).
+
+The random effect of plot explained 21.5% of the variance left over after the variance explained by the prior fixed effect of forest type.
+
+### EMMs of significant (TN and Mg)
+
+```{r}
+#TN
+TN_emmeans <- emmeans(TNmodel, ~FT)
+TN_emmeans <- as.data.frame(TN_emmeans)
+#back transform
+TN_emmeans$emmean <- exp(TN_emmeans$emmean)
+TN_emmeans$lower.CL <- exp(TN_emmeans$lower.CL)
+TN_emmeans$upper.CL <- exp(TN_emmeans$upper.CL)
+TN_emmeans
+#order forest types in order
+TN_emmeans$FT <- factor(TN_emmeans$FT, levels=c("2", "3", "4"))
+#plot
+TN_plot <- ggplot() + geom_point(aes(x = FT, y = emmean, color = FT), 
+  position = position_dodge(width = 0.5), size = 3, data = TN_emmeans) +
+  geom_errorbar(aes(x = FT, ymin = lower.CL, ymax = upper.CL, color = FT),
+                width = 0.2, size = 1, 
+                position = position_dodge(width = 0.5), 
+                data = TN_emmeans) + 
+  geom_point(aes(x = FT, y = TN_NF, color = FT), 
+             position = position_nudge(x = -0.2, y = 0), 
+             data = soildata) + 
+  labs(y = "TDN \n (ug N/g dry soil)") + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  theme_bw() + theme(legend.position = "none") + 
+  theme(axis.title.x = element_blank()) + 
+  theme(axis.text = element_text(size=15, angle=45), 
+        axis.title=element_text(size=18))
+
+#Mg
+sMg_emmeans <- emmeans(sMgmodel, ~FT)
+sMg_emmeans <- as.data.frame(sMg_emmeans)
+#back transform
+sMg_emmeans$emmean <- exp(sMg_emmeans$emmean)
+sMg_emmeans$lower.CL <- exp(sMg_emmeans$lower.CL)
+sMg_emmeans$upper.CL <- exp(sMg_emmeans$upper.CL)
+sMg_emmeans
+#order forest types in order
+sMg_emmeans$FT <- factor(sMg_emmeans$FT, levels=c("2", "3", "4"))
+#plot
+sMg_plot <- ggplot() + geom_point(aes(x = FT, y = emmean, color = FT), 
+  position = position_dodge(width = 0.5), size = 3, data = sMg_emmeans) +
+  geom_errorbar(aes(x = FT, ymin = lower.CL, ymax = upper.CL, color = FT),
+                width = 0.2, size = 1, 
+                position = position_dodge(width = 0.5), 
+                data = sMg_emmeans) + 
+  geom_point(aes(x = FT, y = sMg, color = FT), 
+             position = position_nudge(x = -0.2, y = 0), 
+             data = soildata) + 
+  labs(y = "sMg \n (ug N/g dry soil)") + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  theme_bw() + theme(legend.position = "none") + 
+  theme(axis.title.x = element_blank()) + 
+  theme(axis.text = element_text(size=15, angle=45), 
+        axis.title=element_text(size=18))
+
+soilnutrientCIs <- (TN_plot | sMg_plot)
+soilnutrientCIs + plot_annotation(tag_levels = "A")
+```
+
+### Nutrient ratios
+
+```{r}
+nutrientratiodata <- soildata
+
+#### making dataset ####
+
+# soil C:N (TOC:total N)
+nutrientratiodata$C_N <- nutrientratiodata$TOC_NF / nutrientratiodata$sN
+histogram(nutrientratiodata$C_N)
+
+# soil N:P (total N:total P)
+nutrientratiodata$N_P <- nutrientratiodata$sN / nutrientratiodata$sP
+histogram(nutrientratiodata$N_P)
+
+# soil C:P (TOC:total P)
+nutrientratiodata$C_P <- nutrientratiodata$TOC_NF / nutrientratiodata$sP
+histogram(nutrientratiodata$C_P)
+
+# soil NO3:NH4 (SEAL)
+nutrientratiodata$NO3_NH4 <- nutrientratiodata$NO3_c / nutrientratiodata$NH4_c
+histogram(nutrientratiodata$NO3_NH4)
+
+# microbe C:N (microbe TOC:TDN)
+nutrientratiodata$microbe_C_N <- nutrientratiodata$TOC_Microbe / nutrientratiodata$TN_Microbe
+histogram(nutrientratiodata$microbe_C_N)
+
+# microbe C:P (microbe TOC:PO4)
+nutrientratiodata$microbe_C_P <- nutrientratiodata$TOC_Microbe / nutrientratiodata$PO4_Microbe
+histogram(nutrientratiodata$microbe_C_P)
+
+#microbe N:P (microbe TDN:PO4)
+nutrientratiodata$microbe_N_P <- nutrientratiodata$TN_Microbe / nutrientratiodata$PO4_Microbe
+histogram(nutrientratiodata$microbe_N_P)
+
+# root N:P (CHN total N:total P)
+nutrientratiodata_roots <- rootdata
+nutrientratiodata_roots$r_N_P <- nutrientratiodata_roots$rN / nutrientratiodata_roots$rP
+histogram(nutrientratiodata_roots$r_N_P)
+
+nutrientratiodata <- nutrientratiodata %>% dplyr::select(Plot, FT, Direction, C_N, C_P, N_P, NO3_NH4, microbe_C_N, microbe_C_P, microbe_N_P)
+nutrientratiodata_roots <- nutrientratiodata_roots %>% dplyr::select(Plot, FT, Direction, r_N_P)
+
+nutrientratios <- nutrientratiodata %>% full_join(nutrientratiodata_roots)
+nutrientratios$FT <- relevel(nutrientratios$FT, ref = "4")
+
+#### LMMs ####
+
+# soil C:N
+sCNmodel <- lmer(log(C_N) ~ FT + (1|Plot), data = nutrientratios)
+check_model(sCNmodel)
+anova(sCNmodel, type = 2)
+summary(sCNmodel)
+0.1025/(0.1648 + 0.1025)
+
+# soil C:P **SIGNIFICANT b/w FT 2/4**
+sCPmodel <- lmer(log(C_P) ~ FT + (1|Plot), data = nutrientratios)
+check_model(sCPmodel)
+anova(sCPmodel, type = 2)
+summary(sCPmodel)
+0.08163/(0.08163 + 0.12663)
+
+# soil N:P **SIGNIFICANT b/w FT 2/4**
+sNPmodel <- lmer(log(N_P) ~ FT + (1|Plot), data = nutrientratios)
+check_model(sNPmodel)
+anova(sNPmodel, type = 2)
+summary(sNPmodel)
+0.04711/(0.04711 + 0.06050)
+
+# soil NO3:NH4
+sNratiosmodel <- lmer(sqrt(NO3_NH4) ~ FT + (1|Plot), data = nutrientratios)
+check_model(sNratiosmodel)
+anova(sNratiosmodel, type = 2)
+summary(sNratiosmodel)
+
+# microbe C:N
+mCNmodel <- lmer((microbe_C_N) ~ FT + (1|Plot), data = nutrientratios)
+check_model(mCNmodel)
+anova(mCNmodel, type = 2)
+summary(mCNmodel)
+
+# microbe C:P **significant..???*
+mCPmodel <- lmer(log(microbe_C_P) ~ FT + (1|Plot), data = nutrientratios)
+check_model(mCPmodel)
+anova(mCPmodel, type = 2)
+summary(mCPmodel)
+
+# microbe N:P
+mCPmodel <- lmer(log(microbe_N_P) ~ FT + (1|Plot), data = nutrientratios)
+check_model(mCPmodel)
+anova(mCPmodel, type = 2)
+summary(mCPmodel)
+
+# root N:P
+rNPmodel <- lmer(log(r_N_P) ~ FT + (1|Plot), data = nutrientratios)
+check_model(rNPmodel)
+anova(rNPmodel, type = 2)
+summary(rNPmodel)
+0.03473/(0.03473 + 0.12711)
+
+#### EMMs ####
+
+#soil C:P
+sCP_emmeans <- emmeans(sCPmodel, ~FT)
+sCP_emmeans <- as.data.frame(sCP_emmeans)
+#back transform
+sCP_emmeans$emmean <- exp(sCP_emmeans$emmean)
+sCP_emmeans$lower.CL <- exp(sCP_emmeans$lower.CL)
+sCP_emmeans$upper.CL <- exp(sCP_emmeans$upper.CL)
+sCP_emmeans
+#order forest types in order
+sCP_emmeans$FT <- factor(sCP_emmeans$FT, levels=c("2", "3", "4"))
+#plot
+sCP_plot <- ggplot() + geom_point(aes(x = FT, y = emmean, color = FT), 
+  position = position_dodge(width = 0.5), size = 3, data = sCP_emmeans) +
+  geom_errorbar(aes(x = FT, ymin = lower.CL, ymax = upper.CL, color = FT),
+                width = 0.2, size = 1, 
+                position = position_dodge(width = 0.5), 
+                data = sCP_emmeans) + 
+  geom_point(aes(x = FT, y = C_P, color = FT), 
+             position = position_nudge(x = -0.2, y = 0), 
+             data = nutrientratios) + 
+  labs(y = "soil C:P") + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  theme_bw() + theme(legend.position = "none") + 
+  theme(axis.title.x = element_blank()) + 
+  theme(axis.text = element_text(size=15, angle=45), 
+        axis.title=element_text(size=18))
+
+#soil N:P
+
+sNP_emmeans <- emmeans(sNPmodel, ~FT)
+sNP_emmeans <- as.data.frame(sNP_emmeans)
+#back transform
+sNP_emmeans$emmean <- exp(sNP_emmeans$emmean)
+sNP_emmeans$lower.CL <- exp(sNP_emmeans$lower.CL)
+sNP_emmeans$upper.CL <- exp(sNP_emmeans$upper.CL)
+sNP_emmeans
+#order forest types in order
+sNP_emmeans$FT <- factor(sNP_emmeans$FT, levels=c("2", "3", "4"))
+#plot
+sNP_plot <- ggplot() + geom_point(aes(x = FT, y = emmean, color = FT), 
+  position = position_dodge(width = 0.5), size = 3, data = sNP_emmeans) +
+  geom_errorbar(aes(x = FT, ymin = lower.CL, ymax = upper.CL, color = FT),
+                width = 0.2, size = 1, 
+                position = position_dodge(width = 0.5), 
+                data = sNP_emmeans) + 
+  geom_point(aes(x = FT, y = N_P, color = FT), 
+             position = position_nudge(x = -0.2, y = 0), 
+             data = nutrientratios) + 
+  labs(y = "soil N:P") + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  theme_bw() + theme(legend.position = "none") + 
+  theme(axis.title.x = element_blank()) + 
+  theme(axis.text = element_text(size=15, angle=45), 
+        axis.title=element_text(size=18))
+
+#plot
+
+nutrientratioCIs <- (sCP_plot | sNP_plot)
+nutrientratioCIs + plot_annotation(tag_levels = "A")
+
+soilCIs <- (TN_plot | sMg_plot | sCP_plot | sNP_plot)
+soilCIs + plot_annotation(tag_levels = "A")
+```
+
+## Hypothesis II: Root traits
+
+**Questions:**
+**1. Do root traits follow the root economics spectrum (RES)?**
+**2. How do root traits differ across forest types?**
+
+**Hypothesis: AM-dominated communities (secondary forests) will occupy a wider range of the root economics space, displaying high trait plasticity to adapt to different environmental conditions. ECM-dominated communities, on the other hand, will be more narrowly constrained to a “slow” resource return strategy and “outsourcing” nutrient acquisition strategy. We also expect higher root biomass in secondary forests (do-it-yourself) and higher root phosphatase activity in the primary forest (outsourcing).**
+
+This hypothesis is based on Bergmann et al. (2020) which describes two gradients of nutrient uptake strategies. This hypothesis assumes ECM associated species are more nutrient conservative, while AM associated species are more nutrient acquisitive.
+
+Feature extraction for root traits will be done using principal component analysis (PCA) and principal components will be used in linear mixed models with both soil nutrients and forest types as fixed effects. Posthoc tests using Tukey’s HSD method will be run to test for significant differences between forest types. 
+
+### Root PCA
+
+```{r}
+#select only relevant columns 
+rootPCA <- rootdata[c(4:19)] #check columns
+
+#run PCA
+res.pca.root <- PCA(rootPCA, scale.unit = TRUE, ncp = 5, graph = FALSE)
+print(res.pca.root) # view PCA output
+
+#invert PCA axes
+res.pca.root$var$coord <- res.pca.root$var$coord*-1
+res.pca.root$ind$coord <- res.pca.root$ind$coord*-1
+
+# extract eigenvalues
+eig.val.root <- get_eigenvalue(res.pca.root)
+# extract variables
+var.root <- get_pca_var(res.pca.root)
+# extract PCA individuals/observations
+ind.root <- get_pca_ind(res.pca.root)
+
+#scree plot
+fviz_eig(res.pca.root, addlabels = TRUE, ylim = c(0, 50), barfill = "#a3c585", barcolor = "black") + theme_classic() + ggtitle("Scree Plot (Root PCA)") 
+
+# visualise contribution of variables to PCs
+corrplot(var.root$contrib, is.corr=FALSE, method = "circle", col = met.brewer("VanGogh3"), tl.col = "black", cl.align.text = "l" )
+
+#PCA -- variables (PC1 and PC2)
+fviz_pca_var(res.pca.root, col.var = "contrib", 
+             gradient.cols = met.brewer("Tam")) + 
+  labs(colour = "Contribution (%)", x = "PC1 (18.1%)", y = "PC2 (15.3%)", 
+       title = "Root PCA (Variables Only)")
+
+##PC 1 vs PC 3
+fviz_pca_var(res.pca.root, axes = c(1, 3), col.var = "contrib", 
+             gradient.cols = met.brewer("Tam")) +
+  labs(colour = "Contribution (%)", x = "PC1 (18.1%)", y = "PC3 (12%)", 
+       title = "Root PCA (Variables Only)")
+
+##PC 2 vs PC 3
+fviz_pca_var(res.pca.root, axes = c(2, 3), col.var = "contrib", 
+             gradient.cols = met.brewer("Tam")) +
+  labs(colour = "Contribution (%)", x = "PC2 (15.3%)", y = "PC3 (12%)", 
+       title = "Root PCA (Variables Only)")
+
+#PCA -- individuals
+fviz_pca_ind(res.pca.root, col.ind = rootdata$FT, geom = "point",
+             pointsize = rootdata$ECM_BA_20) +
+  labs(colour = "Forest Type", x = "PC1 (18.1%)", y = "PC2 (15.3%)", 
+       title = "Root PCA (Individual Plots)") +
+   labs(size = "ECM Basal Area (%)") +
+  scale_shape_manual(name = "Forest Type", values = c(19, 19, 19)) + 
+  scale_color_manual(values=met.brewer("Egypt", 3))
+
+#PCA -- biplot PC1 vs PC2
+rootbiplot12 <- fviz_pca_biplot(res.pca.root,
+                col.ind = rootdata$FT,
+                col.var = "black",
+                geom = "point",
+                pointsize = rootdata$ECM_BA_20,
+                addEllipses = TRUE, 
+                label = "var",
+                labelsize = 6,
+                repel = TRUE,
+                mean.point = FALSE,
+                legend.title = "Forest Type") + 
+  labs(x = "PC1 (19.8%)", y = "PC2 (15.4%)", title = "Root PCA (Biplot)") +
+  labs(size = "ECM Basal Area (%)") +
+  scale_shape_manual(name = "Forest Type", values = c(19, 19, 19)) + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) +
+  theme(axis.text=element_text(size=2), axis.title=element_text(size=18)) +
+  theme(legend.title = element_text(size=18), legend.text = element_text(size=14))
+rootbiplot12
+
+#PCA -- biplot PC1 vs PC3
+rootbiplot13 <- fviz_pca_biplot(res.pca.root, axes = c(1, 3),
+                col.ind = rootdata$FT,
+                col.var = "black",
+                geom = "point",
+                pointsize = rootdata$ECM_BA_20,
+                addEllipses = TRUE, 
+                label = "var",
+                labelsize = 6,
+                repel = TRUE,
+                mean.point = FALSE,
+                legend.title = "Forest Type") + 
+  labs(x = "PC1 (19.8%)", y = "PC3 (12.4%)", title = "Root PCA (Biplot)") +
+  labs(size = "ECM Basal Area (%)") +
+  scale_shape_manual(name = "Forest Type", values = c(19, 19, 19)) + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) +
+  theme(axis.text=element_text(size=10), axis.title=element_text(size=18)) +
+  theme(legend.title = element_text(size=18), legend.text = element_text(size=14)) +
+  theme(plot.background = element_rect(fill = "#e3d6cbff")) + 
+  theme(legend.background = element_rect(fill = "#e3d6cbff"),
+  legend.key = element_rect(fill = "#e3d6cbff", color = NA))
+rootbiplot13
+
+# Adding density plots
+rootdatadf <- rootdata
+rootdatadf$row_num <- seq.int(nrow(rootdatadf)) 
+
+rootpcadf <- data.frame(res.pca.root$ind$coord)
+rootpcadf$row_num <- seq.int(nrow(rootpcadf)) 
+rootdf <- rootdatadf %>% right_join(rootpcadf)
+rootdf <- rootdf %>% dplyr::select(Plot, Direction, FT, Dim.1, Dim.2, Dim.3)
+
+#change FT reference group to FT4
+rootdf$FT <- factor(rootdf$FT, levels=c('4', '3', '2'))
+
+#PC1 and PC2
+xdens <- axis_canvas(rootbiplot12, axis = "x") + 
+  geom_density(data = rootdf, 
+               aes(x = Dim.1, fill = FT, colour = FT), alpha = 0.4) + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) +  
+  scale_color_manual(values=met.brewer("Egypt", 3)) +
+  geom_vline(data=ddply(rootdf, "FT", summarise, grp.mean=mean(Dim.1)), 
+             aes(xintercept=grp.mean, color=FT),
+             linetype="dashed") + scale_x_reverse() +  scale_fill_manual(values=met.brewer("Egypt", 3))
+xdens
+
+#density plot of just PC1
+rootdf %>% ggplot(aes(Dim.1, fill = FT, color = FT)) + geom_density(alpha = 0.4) +
+  scale_fill_manual(values=met.brewer("Egypt", 3)) +  
+  scale_color_manual(values=met.brewer("Egypt", 3)) +
+  geom_vline(data=ddply(rootdf, "FT", summarise, grp.mean=mean(Dim.1)), 
+             aes(xintercept=grp.mean, color=FT),
+             linetype="dashed") + scale_x_reverse() +  scale_fill_manual(values=met.brewer("Egypt", 3)) + theme_classic() + 
+  xlab("Root Collaboration Gradient") + ylab("Density")
+
+ggsave("Root Collaboration Gradient Density.png", width = 10, height = 6)
+
+ydens <- axis_canvas(rootbiplot12, axis = "y", coord_flip = TRUE) + 
+  geom_density(data = rootdf, 
+               aes(x = Dim.2, fill = FT, colour = FT), alpha = 0.4) + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + coord_flip() + 
+  geom_vline(data=ddply(rootdf, "FT", summarise, grp.mean=mean(Dim.2)), 
+             aes(xintercept=grp.mean, color=FT),
+             linetype="dashed")
+
+rootbiplot12 %>% 
+  insert_xaxis_grob(xdens, grid::unit(0.5, "in"), position = "top") %>%
+  insert_yaxis_grob(ydens, grid::unit(0.5, "in"), position = "right") %>%
+  ggdraw()
+ggsave("Plot.png", width = 10, height = 6, bg = "white")
+```
+
+### LMMs for root PCs
+
+```{r}
+#bind PCA results and root data (forest type, plot, direction)
+rootpcabind <- cbind(rootdata[c(1:3, 20)], ind.root[1]) ##check columns
+#change FT reference group to FT4
+rootpcabind$FT <- relevel(rootpcabind$FT, ref = "4")
+
+#PC1 -- significant
+rootPC1 <- lmer(coord.Dim.1 ~ FT + (1|Plot), data = rootpcabind)
+check_model(rootPC1) #assumptions met
+anova(rootPC1, type = 2)
+
+#PC2
+rootPC2 <- lmer(log(coord.Dim.2) ~ FT + (1|Plot), data = rootpcabind)
+check_model(rootPC2) #assumptions met
+anova(rootPC2, type = 2)
+
+#PC3
+rootPC3 <- lmer(log(coord.Dim.3) ~ FT + (1|Plot), data = rootpcabind)
+check_model(rootPC3) #assumptions met
+anova(rootPC3, type = 2)
+```
+
+### LMMs for root morphological traits
+
+```{r}
+rootdata$FT <- relevel(rootdata$FT, ref = "4")
+
+#SRL -- significant
+SRLmodel <- lmer(log(SRL) ~ FT + (1|Plot), data = rootdata)
+check_model(SRLmodel) #assumptions met
+anova(SRLmodel, type = 2)
+summary(SRLmodel)
+rootdata$FT <- relevel(rootdata$FT, ref = "2")
+rootdata$FT <- relevel(rootdata$FT, ref = "4")
+
+## EMMs for SRL
+SRL_emmeans <- emmeans(SRLmodel, ~FT)
+SRL_emmeans <- as.data.frame(SRL_emmeans)
+#back transform
+SRL_emmeans$emmean <- exp(SRL_emmeans$emmean)
+SRL_emmeans$lower.CL <- exp(SRL_emmeans$lower.CL)
+SRL_emmeans$upper.CL <- exp(SRL_emmeans$upper.CL)
+SRL_emmeans
+
+#order forest types in order
+SRL_emmeans$FT <- factor(SRL_emmeans$FT, levels=c("2", "3", "4"))
+#plot
+SRL_plot <- ggplot() + geom_point(aes(x = FT, y = emmean, color = FT), 
+  position = position_dodge(width = 0.5), size = 3, data = SRL_emmeans) +
+  geom_errorbar(aes(x = FT, ymin = lower.CL, ymax = upper.CL, color = FT),
+                width = 0.2, size = 1, 
+                position = position_dodge(width = 0.5), 
+                data = SRL_emmeans) + 
+  geom_point(aes(x = FT, y = SRL, color = FT), 
+             position = position_nudge(x = -0.2, y = 0), 
+             data = rootdata) + 
+  labs(x = "Forest Type", y = "Specific Root Length (m/g)") + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  theme_bw() + theme(legend.position = "none") + 
+  theme(axis.text = element_text(size=15, angle=45), 
+        axis.title=element_text(size=18))
+
+#SRA -- significant
+SRAmodel <- lmer(log(SRA) ~ FT + (1|Plot), data = rootdata)
+check_model(SRAmodel) #assumptions met
+anova(SRAmodel, type = 2)
+summary(SRAmodel)
+rootdata$FT <- relevel(rootdata$FT, ref = "2")
+rootdata$FT <- relevel(rootdata$FT, ref = "4")
+
+## EMMs for SRA
+SRA_emmeans <- emmeans(SRAmodel, ~FT)
+SRA_emmeans <- as.data.frame(SRA_emmeans)
+#back transform
+SRA_emmeans$emmean <- exp(SRA_emmeans$emmean)
+SRA_emmeans$lower.CL <- exp(SRA_emmeans$lower.CL)
+SRA_emmeans$upper.CL <- exp(SRA_emmeans$upper.CL)
+SRA_emmeans
+
+#order forest types in order
+SRA_emmeans$FT <- factor(SRA_emmeans$FT, levels=c("2", "3", "4"))
+#plot
+SRA_plot <- ggplot() + geom_point(aes(x = FT, y = emmean, color = FT), 
+  position = position_dodge(width = 0.5), size = 3, data = SRA_emmeans) +
+  geom_errorbar(aes(x = FT, ymin = lower.CL, ymax = upper.CL, color = FT),
+                width = 0.2, size = 1, 
+                position = position_dodge(width = 0.5), 
+                data = SRA_emmeans) + 
+  geom_point(aes(x = FT, y = SRA, color = FT), 
+             position = position_nudge(x = -0.2, y = 0), 
+             data = rootdata) + 
+  labs(x = "Forest Type", y = "Specific Root Area (cm^2)") + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  theme_bw() + theme(legend.position = "none") + 
+  theme(axis.text = element_text(size=15, angle=45), 
+        axis.title=element_text(size=18))
+
+#D -- significant
+Dmodel <- lmer(log(D) ~ FT + (1|Plot), data = rootdata)
+check_model(Dmodel) #assumptions met
+anova(Dmodel, type = 2)
+summary(Dmodel)
+rootdata$FT <- relevel(rootdata$FT, ref = "2")
+rootdata$FT <- relevel(rootdata$FT, ref = "4")
+
+## EMMs for D
+D_emmeans <- emmeans(Dmodel, ~FT)
+D_emmeans <- as.data.frame(D_emmeans)
+#back transform
+D_emmeans$emmean <- exp(D_emmeans$emmean)
+D_emmeans$lower.CL <- exp(D_emmeans$lower.CL)
+D_emmeans$upper.CL <- exp(D_emmeans$upper.CL)
+D_emmeans
+
+#order forest types in order
+D_emmeans$FT <- factor(D_emmeans$FT, levels=c("2", "3", "4"))
+#plot
+D_plot <- ggplot() + geom_point(aes(x = FT, y = emmean, color = FT), 
+  position = position_dodge(width = 0.5), size = 3, data = D_emmeans) +
+  geom_errorbar(aes(x = FT, ymin = lower.CL, ymax = upper.CL, color = FT),
+                width = 0.2, size = 1, 
+                position = position_dodge(width = 0.5), 
+                data = D_emmeans) + 
+  geom_point(aes(x = FT, y = D, color = FT), 
+             position = position_nudge(x = -0.2, y = 0), 
+             data = rootdata) + 
+  labs(x = "Forest Type", y = "Root Diameter (mm)") + 
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  theme_bw() + theme(legend.position = "none") + 
+  theme(axis.text = element_text(size=15, angle=45), 
+        axis.title=element_text(size=18))
+
+#RTD -- almost significant
+RTDmodel <- lmer(log(RTD) ~ FT + (1|Plot), data = rootdata)
+check_model(RTDmodel) #assumptions met
+anova(RTDmodel, type = 2)
+
+#Tips
+Tipsmodel <- lmer(log(Tips) ~ FT + (1|Plot), data = rootdata)
+check_model(Tipsmodel) #assumptions met
+anova(Tipsmodel, type = 2)
+
+roottraitsCIs <- (SRL_plot | SRA_plot | D_plot)
+roottraitsCIs + plot_annotation(tag_levels = "A")
+```
+
+### LMMs for other root traits
+
+```{r}
+#root enzyme activity -- not significantly different
+enzymemodel <- lmer(log(PME) ~ FT*ECM_BA_20 + (1|Plot), data = rootdata)
+check_model(enzymemodel)
+anova(enzymemodel, type = 2)
+
+#root biomass
+rootbiomassmodel <- lmer((TotalRootBiomass) ~ FT + (1|Plot), data = CCNRalldata)
+check_model(rootbiomassmodel)
+anova(rootbiomassmodel, type = 2)
+```
+
+## Hypothesis III: Root variability
+
+### Root PCs against soil fertility gradient
+
+#### Extract all PCs
+
+```{r}
+#extract coordinates of soil PCA
+soilcoord <- data.frame(res.pca.soil$ind$coord)
+soilcoord$row_num <- seq.int(nrow(soilcoord)) #add column to join
+#join by row number
+soildatadf <- soildata
+soildatadf$row_num <- seq.int(nrow(soildatadf)) 
+
+soilcoord <- soildatadf %>% right_join(soilcoord) %>%
+  dplyr::select(row_num, Plot, Direction, FT, Dim.1, Dim.2, ECM_BA_20) %>% dplyr::rename(soilDim.1 = Dim.1) %>% dplyr::rename(soilDim.2 = Dim.2)
+
+#extract coordinates of root PCA
+rootcoord <- data.frame(res.pca.root$ind$coord)
+rootcoord$row_num <- seq.int(nrow(rootcoord)) #add column to join
+#join to soil PCA by row number
+soilrootcoord <- soilcoord %>% right_join(rootcoord) 
+soilrootcoord <- soilrootcoord %>%
+  dplyr::select(Plot, Direction, FT, soilDim.1, soilDim.2, Dim.1, Dim.2, Dim.3, ECM_BA_20) %>% dplyr::rename(rootDim.1 = Dim.1, rootDim.2 = Dim.2, rootDim.3 = Dim.3)
+```
+
+#### Root PC1 (Collaboration gradient)
+
+```{r}
+#soil PC1 vs root PC1
+soil1root1pc <- soilrootcoord %>% ggplot(aes(x = soilDim.1, y = rootDim.1, size = ECM_BA_20, color = FT)) +
+  geom_point() + theme_classic() + geom_smooth(method = "lm", alpha = .2, aes(fill = FT)) + ylim(-5, 5) +
+  labs(colour = "Forest Type", fill = "Forest Type",
+       x = "Soil Fertility Gradient", y = "Root Collaboration Gradient", size = "ECM Basal Area (%)") + theme(axis.title=element_text(size=14)) + 
+  scale_shape_manual(name = "Forest Type", values = c(19, 19, 19)) +
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) +
+     guides(size = guide_legend(override.aes = list(linetype = c(0, 0, 0, 0)))) + 
+  theme(legend.position="none")
+soil1root1pc
+
+#LMM
+soilgradientmodel <- lmer((rootDim.1) ~ soilDim.1*FT + (1|Plot), data = soilrootcoord)
+check_model(soilgradientmodel)
+anova(soilgradientmodel, type = 2)
+
+#soil PC2 vs root PC1
+soil2root1pc <- soilrootcoord %>% ggplot(aes(x = soilDim.2, y = rootDim.1, size = ECM_BA_20, color = FT)) +
+  geom_point() + theme_classic() + geom_smooth(method = "lm", alpha = .2, aes(fill = FT)) + ylim(-5, 5) +
+  labs(colour = "Forest Type", fill = "Forest Type",
+       x = "Soil PC2 Gradient", y = "Root Collaboration Gradient", size = "ECM Basal Area (%)") + theme(axis.title=element_text(size=14)) + 
+  scale_shape_manual(name = "Forest Type", values = c(19, 19, 19)) +
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) +
+     guides(size = guide_legend(override.aes = list(linetype = c(0, 0, 0, 0)))) +
+  theme(legend.position="none")
+soil2root1pc
+
+#LMM
+soilgradientmodel2 <- lmer((rootDim.1) ~ soilDim.2*FT + (1|Plot), data = soilrootcoord)
+check_model(soilgradientmodel2)
+anova(soilgradientmodel2, type = 2)
+```
+
+#### Root PC2 (Conservation gradient)
+
+```{r}
+#soil PC1 vs root PC2
+soil1root2pc <- soilrootcoord %>% ggplot(aes(x = soilDim.1, y = rootDim.2, size = ECM_BA_20, color = FT)) +
+  geom_point() + theme_classic() + geom_smooth(method = "lm", alpha = .2, aes(fill = FT)) + ylim(-5, 5) +
+  labs(colour = "Forest Type", fill = "Forest Type",
+       x = "Soil Fertility Gradient", y = "Root Conservation Gradient", size = "ECM Basal Area (%)") + theme(axis.title=element_text(size=14)) + 
+  scale_shape_manual(name = "Forest Type", values = c(19, 19, 19)) +
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) +
+     guides(size = guide_legend(override.aes = list(linetype = c(0, 0, 0, 0))))
+soil1root2pc
+
+#LMM
+soilgradientmodel3 <- lmer((rootDim.2) ~ soilDim.1*FT + (1|Plot), data = soilrootcoord)
+check_model(soilgradientmodel3)
+anova(soilgradientmodel3, type = 2)
+
+#soil PC2 vs root PC2
+soil2root2pc <- soilrootcoord %>% ggplot(aes(x = soilDim.2, y = rootDim.2, size = ECM_BA_20, color = FT)) +
+  geom_point() + theme_classic() + geom_smooth(method = "lm", alpha = .2, aes(fill = FT)) + ylim(-5, 5) +
+  labs(colour = "Forest Type", fill = "Forest Type",
+       x = "Soil PC2 Gradient", y = "Root Conservation Gradient", size = "ECM Basal Area (%)",
+       title = "Root Conservation Gradient Across Soil Fertility Gradient") + theme(axis.title=element_text(size=14)) + 
+  scale_shape_manual(name = "Forest Type", values = c(19, 19, 19)) +
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) +
+     guides(size = guide_legend(override.aes = list(linetype = c(0, 0, 0, 0)))) + theme(plot.background = element_rect(fill = "#e3d6cbff")) + 
+  theme(legend.background = element_rect(fill = "#e3d6cbff"),
+  legend.key = element_rect(fill = "#e3d6cbff", color = NA)) +
+  theme(panel.background = element_rect(fill = '#e3d6cbff', color = 'black'))
+soil2root2pc
+
+#LMM
+soilgradientmodel4 <- lmer((rootDim.2) ~ soilDim.2*FT + (1|Plot), data = soilrootcoord)
+check_model(soilgradientmodel4)
+anova(soilgradientmodel4, type = 2)
+
+gradientplots <- (soil1root1pc | soil2root1pc | soil1root2pc)
+gradientplots + plot_annotation(tag_levels = "A")
+```
+
+#### Soil gradient vs root PCs
+
+```{r}
+#combine soil PC1 with root data
+soilgradient <- soilcoord %>% dplyr::select(Plot, Direction, soilDim.1, soilDim.2)
+rootsoilgradientdf <- rootdata %>% right_join(soilgradient) %>% dplyr::select(-PercentNecro)
+mydata <- rootsoilgradientdf[,c(4:18, 20)] #check columns
+
+biomassmodel <- lmer((TotalRootBiomass) ~ soilDim.1 + FT + (1|Plot), data = rootsoilgradientdf)
+check_model(biomassmodel)
+anova(biomassmodel, type = 2)
+summary(biomassmodel)
+
+#correlation matrix 
+mydata.cor <- cor(mydata, use = "complete.obs") #ignoring NAs
+round(mydata.cor, 2) #round to two decimals
+
+#correlation matrix with p values
+mydata.rcorr <- rcorr(as.matrix(mydata))
+mydata.coeff <- mydata.rcorr$r #extract the correlation coefficients
+mydata.p <- mydata.rcorr$P #extract p-values
+mydata.p[is.na(mydata.p)] <- 1 #replace NA with 1 in p values
+
+#visualise with corrplot
+corrplot(mydata.cor, type = "upper",
+         tl.col = "black", tl.srt = 45)
+
+# Insignificant correlation are crossed
+par(bg = "#e3d6cbff")
+corrplot(mydata.cor, type="lower", method = "color", addgrid.col = 'black', tl.col = "black",
+         p.mat = mydata.p, sig.level = 0.05, insig = "blank")
+
+#linear regression of soil PC1 with root biomass
+biomass_plot <- rootsoilgradientdf %>% ggplot(aes(soilDim.1, TotalRootBiomass, fill = FT, color = FT)) + geom_point() + geom_smooth(method = lm) +
+  xlab("Soil Fertility Gradient") + ylab("Total Root Biomass") + 
+  scale_shape_manual(name = "Forest Type", values = c(19, 19, 19)) +
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) + theme_classic() + theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=15,face="bold"))+
+  theme(legend.key.size = unit(1, 'cm'))
+
+ggsave("Soil PC1 vs Biomass.png", width = 10, height = 6)
+```
+
+#### LMMs: Root nutrients vs. each soil nutrient
+
+```{r}
+#rC vs. sC
+rCsoilmodel <- lmer((rC) ~ sC*FT + (1|Plot), data = CCNRalldata)
+check_model(rCsoilmodel)
+anova(rCsoilmodel, type = 2)
+
+#rC vs. soil TOC -- significant
+rCsoilTOCmodel <- lmer((rC) ~ TOC_NF*FT + (1|Plot), data = CCNRalldata)
+check_model(rCsoilTOCmodel)
+anova(rCsoilTOCmodel, type = 2)
+#plot
+TOC_plot <- CCNRalldata %>% ggplot(aes(TOC_NF, rC, fill = FT, color = FT)) + geom_point() + geom_smooth(method = lm) +
+  xlab("Soil TOC") + ylab("Total Root Carbon") + 
+  scale_shape_manual(name = "Forest Type", values = c(19, 19, 19)) +
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) + theme_classic() + theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=15,face="bold"))+
+  theme(legend.key.size = unit(1, 'cm'))
+```
+
+Significant impact of TOC on rC (p = 0.005). No significant impact of FT or interaction.
+
+```{r}
+#rN vs sN
+rNsoilmodel <- lmer((rN) ~ sN*FT + (1|Plot), data = CCNRalldata)
+check_model(rNsoilmodel)
+anova(rNsoilmodel, type = 2)
+
+#rN vs TN_NF
+rNsoilTNmodel <- lmer((rN) ~ TN_NF*FT + (1|Plot), data = CCNRalldata)
+check_model(rNsoilTNmodel)
+anova(rNsoilTNmodel, type = 2)
+
+#rN vs NO3 -- significant
+rNsoilNO3model <- lmer((rN) ~ NO3_c*FT + (1|Plot), data = CCNRalldata)
+check_model(rNsoilNO3model)
+anova(rNsoilNO3model, type = 2)
+#plot
+TN_plot  <- CCNRalldata %>% ggplot(aes(NO3_c, rN, fill = FT, color = FT)) + geom_point() + geom_smooth(method = lm) +
+  xlab("Soil NO3") + ylab("Total Root Nitrogen") + 
+  scale_shape_manual(name = "Forest Type", values = c(19, 19, 19)) +
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) + theme_classic() + theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=15,face="bold"))+
+  theme(legend.key.size = unit(1, 'cm'))
+```
+
+Significant interaction of FT and soil NO3.
+
+```{r}
+#rN vs NH4
+rNsoilNH4model <- lmer((rN) ~ NH4_c*FT + (1|Plot), data = CCNRalldata)
+check_model(rNsoilNH4model)
+anova(rNsoilNH4model, type = 2)
+
+#rP vs sP -- significant
+rPsoilmodel <- lmer((rP) ~ sP*FT + (1|Plot), data = CCNRalldata)
+check_model(rPsoilmodel)
+anova(rPsoilmodel, type = 2)
+#plot
+rootP_plot <- CCNRalldata %>% ggplot(aes(sP, rP, fill = FT, color = FT)) + geom_point() + geom_smooth(method = lm) +
+  xlab("Total Soil P") + ylab("Total Root P") + 
+  scale_shape_manual(name = "Forest Type", values = c(19, 19, 19)) +
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) + theme_classic() + theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=15,face="bold"))+
+  theme(legend.key.size = unit(1, 'cm'))
+```
+
+Significant effect of FT only.
+
+```{r}
+#rP vs soil PO4
+rPsoilPO4model <- lmer((rP) ~ PO4_NF*FT + (1|Plot), data = CCNRalldata)
+check_model(rPsoilPO4model)
+anova(rPsoilPO4model, type = 2)
+
+#rAl vs sAl -- significant
+rAlsoilmodel <- lmer((rAl) ~ sAl*FT + (1|Plot), data = CCNRalldata)
+check_model(rAlsoilmodel)
+anova(rAlsoilmodel, type = 2)
+#plot
+root_Al_plot <- CCNRalldata %>% ggplot(aes(sAl, rAl, fill = FT, color = FT)) + geom_point() + geom_smooth(method = lm) +
+  xlab("Soil Al") + ylab("Root Al") + 
+  scale_shape_manual(name = "Forest Type", values = c(19, 19, 19)) +
+  scale_color_manual(values=met.brewer("Egypt", 3)) + 
+  scale_fill_manual(values=met.brewer("Egypt", 3)) + theme_classic() + theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=15,face="bold"))+
+  theme(legend.key.size = unit(1, 'cm'))
+```
+
+Significant effect of soil Al only.
+
+```{r}
+#rCa vs sCa
+rCasoilmodel <- lmer((rCa) ~ sCa*FT + (1|Plot), data = CCNRalldata)
+check_model(rCasoilmodel)
+anova(rCasoilmodel, type = 2)
+
+#rFe vs sFe
+rFesoilmodel <- lmer((rFe) ~ sFe*FT + (1|Plot), data = CCNRalldata)
+check_model(rFesoilmodel)
+anova(rFesoilmodel, type = 2)
+
+#rK vs sK
+rKsoilmodel <- lmer((rK) ~ sK*FT + (1|Plot), data = CCNRalldata)
+check_model(rKsoilmodel)
+anova(rKsoilmodel, type = 2)
+
+#rMg vs sMg
+rMgsoilmodel <- lmer(log(rMg) ~ sMg*FT + (1|Plot), data = CCNRalldata)
+check_model(rMgsoilmodel)
+anova(rMgsoilmodel, type = 2)
+
+rootnutrientplots <- (biomass_plot | TOC_plot | TN_plot) / (rootP_plot | root_Al_plot)
+rootnutrientplots + plot_annotation(tag_levels = "A")
+```
+
+### Tree Community NMDS
+
+#### NMDS
+
+```{r}
+tree_counts <- read.csv("/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/CCProject/Cleaned Data/Tree_Counts.csv") 
+tree_counts <- tree_counts %>% tibble::column_to_rownames("Plot")
+tree_counts_matrix <- as.matrix(tree_counts)
+
+rootmorph <- rootdata %>% dplyr::select(1:2, 5, 7:11)
+rootmorph_avg <- rootmorph %>% group_by(Plot, FT) %>% summarise_all(mean)
+
+#scree plot
+dimcheckMDS(tree_counts, distance = "bray", k = 6, trymax = 100, autotransform = FALSE)
+#NMDS
+NMDS_WYK <- metaMDS(tree_counts_matrix, k = 3, trymax = 100, trace = F, autotransform = FALSE, distance="bray")
+
+stressplot(NMDS_WYK)
+NMDS_WYK
+
+en = envfit(NMDS_WYK, rootmorph_avg, permutations = 999, na.rm = TRUE)
+
+#extract NMDS scores for plotting with ggplot2
+##species scores
+species.scores <- as.data.frame(scores(NMDS_WYK, "species"))
+species.scores$species <- rownames(species.scores) 
+species.scores$type <- "Species"
+
+##site scores
+site.scores <- as.data.frame(scores(NMDS_WYK, "sites")) %>% rownames_to_column() %>% dplyr::rename(Plot = rowname)
+site.scores <- site.scores %>% full_join(rootmorph_avg)
+
+##second NMDS
+
+#extract NMDS scores (x and y coordinates) for sites from newer versions of vegan package
+data.scores = as.data.frame(scores(NMDS_WYK)$sites)
+data.scores <- tibble::rownames_to_column(data.scores, "Plot")
+data.scores <- data.scores %>% inner_join(rootmorph_avg) %>% tibble::column_to_rownames("Plot")
+
+en_coord_cont = as.data.frame(scores(en, "vectors")) * ordiArrowMul(en)
+en_coord_cat = as.data.frame(scores(en, "factors")) * ordiArrowMul(en)
+
+data.scores$FT <- factor(data.scores$FT, levels=c("2", "3", "4"))
+
+gg = ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2)) + 
+     geom_point(data = data.scores, aes(colour = FT), size = 3, alpha = 0.5) + 
+     #scale_colour_manual(values = c("orange", "steelblue")) + 
+     theme(axis.title = element_text(size = 10, face = "bold", colour = "grey30"), 
+     panel.background = element_blank(), panel.border = element_rect(fill = NA, colour = "grey30"), 
+     axis.ticks = element_blank(), axis.text = element_blank(), legend.key = element_blank(), 
+     legend.title = element_text(size = 10, face = "bold", colour = "grey30"), 
+     legend.text = element_text(size = 9, colour = "grey30")) +
+     labs(colour = "FT")
+gg
+
+## with arrows
+gg = ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2)) + 
+     geom_point(data = data.scores, aes(fill = FT), colour = "black", pch = 21, size = 5, alpha = 1) +
+  stat_ellipse(aes(fill = FT), geom = "polygon", alpha = 0.2) +
+     scale_fill_manual(values=met.brewer("Egypt", 3))  + 
+  scale_color_manual(values=met.brewer("Egypt", 3))  +
+     geom_segment(aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2), 
+       data = en_coord_cont, alpha = 0.5) +
+     geom_text_repel(data = en_coord_cont, aes(x = NMDS1, y = NMDS2), 
+       fontface = "bold", label = row.names(en_coord_cont), size = 5) + 
+     theme(axis.title = element_text(size = 20, face = "bold"), 
+       panel.background = element_blank(), panel.border = element_rect(fill = NA), 
+       axis.ticks = element_blank(), axis.text = element_blank(), legend.key = element_blank(), 
+       legend.title = element_text(size = 20, face = "bold"), 
+       legend.text = element_text(size =15)) + 
+     labs(colour = "FT")
+     
+gg
+```
+
+
+#### 3D
+
+```{r}
+# library
+packages <- c(
+  "argparse", # command line argument parser, more features than base-R
+  "tidyverse", # multi-purpose data-wrangling # and ggplot
+  "data.table", # read and write data multi-threading # with easier to remember syntax
+  "janitor", # clean up name
+  "openxlsx", # handling excel files # with more feature than readxl
+  "scales", # label (date,time,currency,percentage) and axis break
+  "patchwork", # combine and annotate figure
+  "plotly", "htmlwidgets", "utils"
+)
+
+# load library quietly and stop if library can not be loaded
+for (package in packages) {
+  if (suppressPackageStartupMessages(require(package, character.only = TRUE))) {
+  } else {
+    stop("install required packages before running script")
+  }
+}
+
+# set seed for reproducibility
+set.seed(42)
+
+# ---- Parse cmd line args ----
+# parse command line arguments
+parser <- ArgumentParser(description='Program role')
+parser$add_argument('rds', nargs='?', help = 'rds file to load for mds data')
+parser$add_argument('-o', '--outfile', type='character',
+                    help='output file path')
+
+# declare params
+vois = paste0("NMDS", 1:3)
+
+# declare symbol for highlight
+.symbols = c(Others = "circle")
+
+.colors = c("red", "blue", "green")
+
+# plot scatter3d with plotly
+fig <- plot_ly(type = "scatter3d", mode = "markers",
+  data = site.scores,
+  x = ~ .data[[vois[1]]], y = ~ .data[[vois[2]]], z = ~ .data[[vois[3]]],
+  # color and symbol
+  color = ~FT, colors = .colors, #symbol = ~hli, symbols = .symbols,
+  # size 
+  size = I(100),
+  # add custom text to hover info
+  text = ~ paste0(Plot),
+  hoverinfo = "text"
+) |>
+  # add layout camera and axis title # camera eye is important here
+  layout(scene = list(
+    # z axis will lower the viewpoint on the vertical axis
+    camera = list(eye = list(x = 1.25, y = 1.25, z = 0.2),
+      center = list(x = 0, y = 0, z = 0)
+      )
+    )
+  ) |>
+  # render animation
+  htmlwidgets::onRender("
+      function(el, x){
+  var id = el.getAttribute('id');
+  var gd = document.getElementById(id);
+  Plotly.update(id).then(attach);
+  function attach() {
+    var cnt = 0;
+    
+    function run() {
+      rotate('scene', Math.PI / 900);
+      requestAnimationFrame(run);
+    } 
+    run();
+    
+    function rotate(id, angle) {
+      var eye0 = gd.layout[id].camera.eye
+      var rtz = xyz2rtz(eye0);
+      rtz.t += angle;
+      
+      var eye1 = rtz2xyz(rtz);
+      Plotly.relayout(gd, id + '.camera.eye', eye1)
+    }
+    
+    function xyz2rtz(xyz) {
+      return {
+        r: Math.sqrt(xyz.x * xyz.x + xyz.y * xyz.y),
+        t: Math.atan2(xyz.y, xyz.x),
+        z: xyz.z
+      };
+    }
+    
+    function rtz2xyz(rtz) {
+      return {
+        x: rtz.r * Math.cos(rtz.t),
+        y: rtz.r * Math.sin(rtz.t),
+        z: rtz.z
+      };
+    }
+  };
+}
+    ")
+
+fig
+```
+
+#### PERMANOVA
+
+```{r}
+tree_counts_matrix
+rootmorph_avg$FT <- relevel(rootmorph_avg$FT, ref = "4")
+
+adonis2(tree_counts_matrix ~ FT, data = rootmorph_avg)
+```
+
+Based on this PERMANOVA, there is not a statistically significant difference in community composition of tree species across the different forest types (F(2, 30) = 1.1336, R2 = 0.07026, p = 0.201).
+
+#### PERMDISP
+
+```{r}
+#create dissimilarity matrix
+dis <- vegdist(tree_counts_matrix)
+
+#check for non-equal dispersions using betadisper() and permutest()
+dispersion_model <- betadisper(dis, rootmorph_avg$FT)
+permutest(dispersion_model, pairwise = TRUE) #include pairwise comparisons
+
+#visualise differences in dispersions between groups
+plot(dispersion_model)
+```
+
+I then ran PERMDISP to check if the results of the PERMANOVA was due to a difference in dispersion between groups (unequal variances) or if it is actually due to the centroids of the group data themselves. After running the PERMDISP test, there was no statistically significant difference in variance between the groups (F(2, 30) = 0.9285, p = 0.412). This implies that the lack of difference is due to the group centroids rather than in a difference in group dispersions. This conclusion can be reinforced by the plot, which shows an overlap in groups between all three forest types.
+
+### DCA
+
+```{r}
+dca <- decorana(tree_counts_matrix, iweigh=0, iresc=4, ira=0, mk=26, short=0,
+         before=NULL, after=NULL)
+plot(dca)
+#high numbers on x axis means high heterogeneity = CCA instead of RDA
+```
+
+### CCA
+
+```{r}
+tree_counts <- tree_counts %>% rownames_to_column() 
+tree_counts <- tree_counts %>% dplyr::rename(Plot = rowname)
+#rootmorph_avg
+
+ccadata <- tree_counts %>% right_join(rootmorph_avg)
+cca_x <- ccadata[,2:246]
+cca_y <- ccadata[,248:253]
+cca_x <- cca_x %>% mutate_if(is.character,as.numeric)
+cca_y <- cca_y %>% mutate_if(is.character,as.numeric)
+
+correl <- matcor(cca_x, cca_y)
+correl
+img.matcor(correl, type = 2)
+
+#cc1 <- cancor(cca_x, cca_y)  ### function from standard R instalation
+#cc2 <- cc(cca_x, cca_y)      ### function for the R package 'CCA'
+
+#cc1$cor  ### function from standard R instalation
+
+#par(mfrow = c(1,2))
+#barplot(cc1$cor, main = "Canonical correlations for 'cancor()'", col = "gray")
+#barplot(cc1$cor, main = "Canonical correlations for 'cancor()'", col = "gray")
+
+
+# CCA
+cca <- cca(cca_x, cca_y)
+plot(cca, scaling = 1)
+
+# statistical tests
+```
+
