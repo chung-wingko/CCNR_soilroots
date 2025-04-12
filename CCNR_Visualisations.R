@@ -1,24 +1,5 @@
----
-title: "Root traits across CCNR"
-author: "Chung-Wing Ko"
-date: "2025 3 April"
-output: 
-  html_document:
-    toc: true
-    toc_depth: 4
-    toc_float: true
-    code_folding: show
-editor_options: 
-  chunk_output_type: console
----
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, progress = FALSE)
-```
-
 ### Set up ###
 
-```{r}
 #clear workspace
 rm (list =ls())
 setwd("/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/CCProject/Data Analysis/Manuscript")
@@ -61,11 +42,10 @@ library(VennDiagram) #for variance partitioning
 library(gridExtra)
 library(agricolae) #tukey test
 library(ggcorrplot)
-```
+
 
 #### Import data 
 
-```{r}
 soildata <- read_csv("/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/CCProject/Cleaned Data/Soil_final.csv")
 soildata$FT <- factor(soildata$FT, level = c("Early secondary", "Mature secondary", "Old-growth"))
 
@@ -80,11 +60,10 @@ ft$FT <- as.factor(ft$FT)
 ft$FT <- factor(ft$FT, level = c("Early secondary", "Mature secondary", "Old-growth"))
 
 ft_colors <- c("#dd5129", "#0f7ba2", "#43b284")
-```
+
 
 #### Plot measurements
 
-```{r}
 summary(soildata$pH)
 boxplot(soildata$pH)
 hist(soildata$pH)
@@ -152,11 +131,10 @@ aggregate(BA ~ FT, data = soildata,
 plot_measurements <- sprich %>% full_join(shannon) %>% full_join(stemdens) %>% full_join(soildata) %>% dplyr::select(Plot, FT, Direction, sprich, shannon, stemdens, BA)
 
 CCNRalldata <- CCNRalldata %>% full_join(plot_measurements)
-```
+
 
 #### All means
 
-```{r}
 alllength <- as.data.frame(colSums(!is.na(CCNRalldata))) %>% tibble::rownames_to_column("variable")
 alllength <- alllength[c(4:55),]
 
@@ -190,11 +168,10 @@ write.csv(allsummary, "mean_soil_values.csv")
 soildata <- soildata %>% dplyr::select(-sC_percent, -sN_percent)
 rootdata <- rootdata %>% dplyr::select(-rC_percent, -rN_percent)
 CCNRalldata <- CCNRalldata %>% dplyr::select(-sC_percent, -sN_percent, -rC_percent, -rN_percent)
-```
+
 
 #### Correlograms
 
-```{r}
 #root vs soil nutrients
 CCNRalldata_corr <- CCNRalldata %>% dplyr::select(sN, sP, NO3_c, NH4_c, PO4_NF, sAl, sCa, sFe, sK, sMg, rC, rN, rP, rAl, rCa, rFe, rK, rMg)
 corr <- round(cor(CCNRalldata_corr, use = "pairwise.complete.obs"),3) 
@@ -206,11 +183,10 @@ ggcorrplot(corr, p.mat = p.mat, insig = "blank", lab = TRUE,
 
 #soil/root nutrient correlogram 
 ggpairs(CCNRalldata[,c("sN", "sP", "NO3_c", "NH4_c", "PO4_NF", "sAl", "sCa", "sFe", "sK", "sMg", "rC", "rN", "rP", "rAl", "rCa", "rFe", "rK", "rMg")], columnLabels = c("sN", "sP", "NO3", "NH4", "PO4", "sAl", "sCa", "sFe", "sK", "sMg", "rC", "rN", "rP", "rAl", "rCa", "rFe", "rK", "rMg"), aes(color=soildata$FT), upper = list(continuous = wrap('cor', size = 3)), lower = list(continuous = wrap("smooth")), diag = list(continuous = wrap("densityDiag", alpha = 0.3)), title = "Correlogram of Soil/Root Nutrients") + scale_fill_manual(values=met.brewer("Egypt", 3)) + scale_color_manual(values=met.brewer("Egypt", 3)) + theme_bw()
-```
+
 
 #### NMDS
 
-```{r}
 #import data
 tree_counts <- read_csv("/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/CCProject/Cleaned Data/Tree_Counts.csv") 
 tree_counts <- tree_counts %>% tibble::column_to_rownames("Plot")
@@ -260,18 +236,16 @@ png(filename = "/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/
     width = 700, height = 600, units = "px")
 NMDS_plot
 dev.off()
-```
+
 
 #### PERMANOVA
 
-```{r}
 adonis2(tree_counts ~ FT, data = ft)
 anosim <- anosim(tree_counts, ft$FT, distance = "bray", permutations = 999)
-```
+
 
 #### PERMDISP
 
-```{r}
 #create dissimilarity matrix
 dis <- vegdist(tree_counts)
 ft$FT <- factor(ft$FT, level = c("Early secondary", "Mature secondary", "Old-growth"))
@@ -290,7 +264,7 @@ png(filename = "/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/
     width = 450, height = 600, units = "px")
 disp
 dev.off()
-```
+
 
 ## Hypothesis I: Soil nutrients
 
@@ -298,7 +272,6 @@ Despite being on the same parent material, secondary forests will have lower con
 
 #### Soil PCA
 
-```{r}
 #select only relevant columns 
 soilPCA <- soildata[c("sN", "sP", "NO3_c", "NH4_c", "PO4_NF", "sCa", "sFe", "sK", "sMg", "CEC", "TEB", "AlSat")] 
 
@@ -364,13 +337,12 @@ png(filename = "/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/
     width = 750, height = 500, units = "px")
 soilbiplot
 dev.off()
-```
+
 
 #### LMMs of soil nutrients across FT
 
 Linear mixed models will be run on all soil variables. Linear mixed models assume independence, linearity, normality, and equal variance. Posthoc tests using Tukey’s HSD method will be run to test for significant differences between forest types. 
 
-```{r}
 #Total C
 sCmodel <- lmer(log(sC) ~ FT + (1|Plot), data = soildata)
 check_model(sCmodel)
@@ -445,11 +417,10 @@ anova(TEBmodel, type = 2)
 AlSatmodel <- lmer((AlSat) ~ FT + (1|Plot), data = soildata)
 check_model(AlSatmodel)
 anova(AlSatmodel, type = 2)
-```
+
 
 #### Nutrient ratios
 
-```{r}
 #soil ratios (totals, molar ratio)
 histogram(soildata$sC_N)
 histogram(soildata$sN_P)
@@ -599,7 +570,7 @@ png(filename = "/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/
     width = 450, height = 600, units = "px")
 nutrientratioCIs + plot_annotation(tag_levels = "A")
 dev.off()
-```
+
 
 ## Hypothesis II: Root traits
 
@@ -607,7 +578,6 @@ Differences in tree species composition due to land-use change corresponds to di
 
 #### Root PCA
 
-```{r}
 #select only relevant columns 
 rootPCA <- rootdata[c("rC", "rN", "rP", "rAl", "rCa", "rFe", "rK", "rMg", "PME", "TotalRootBiomass", "SRL", "SRA", "D", "RTD", "Tips")]
 
@@ -692,11 +662,10 @@ png(filename = "/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/
     width = 700, height = 600, units = "px")
 rootbiplot12
 dev.off()
-```
+
 
 #### LMMs for root morphological traits
 
-```{r}
 rootdata$FT <- relevel(rootdata$FT, ref = "Old-growth")
 
 #SRL -- significant
@@ -860,11 +829,10 @@ png(filename = "/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/
     width = 850, height = 500, units = "px")
 roottraitsCIs + plot_annotation(tag_levels = "A")
 dev.off()
-```
+
 
 #### LMMs for other root traits
 
-```{r}
 #root enzyme activity -- not significantly different
 enzymemodel <- lmer(log(PME) ~ FT + (1|Plot), data = rootdata)
 check_model(enzymemodel)
@@ -874,13 +842,12 @@ anova(enzymemodel, type = 2)
 rootbiomassmodel <- lmer((TotalRootBiomass) ~ FT + (1|Plot), data = CCNRalldata)
 check_model(rootbiomassmodel)
 anova(rootbiomassmodel, type = 2)
-```
+
 
 ## Hypothesis III: Root variability
 
 #### Extract all PCs
 
-```{r}
 #extract coordinates of soil PCA
 soilcoord <- data.frame(res.pca.soil$ind$coord)
 soilcoord$row_num <- seq.int(nrow(soilcoord)) #add column to join
@@ -902,13 +869,12 @@ soilrootcoord <- soilrootcoord %>%
 
 #change FT reference group to FT4
 soilrootcoord$FT <- relevel(soilrootcoord$FT, ref = "Old-growth")
-```
+
 
 #### LMMs for soil PCs vs FT and root PCs against soil and FT
 
 ##### Soil PCs
 
-```{r}
 #Soil PC1
 soil1 <- lmer((soilDim.1) ~ FT + (1|Plot), data = soilrootcoord)
 check_model(soil1)
@@ -920,11 +886,10 @@ soil2 <- lmer((soilDim.2) ~ FT + (1|Plot), data = soilrootcoord)
 check_model(soil2)
 anova(soil2, type = 2)
 summary(soil2)
-```
+
 
 ##### Root PC1 (Collaboration gradient)
 
-```{r}
 #against Soil PC1
 root1soil1 <- lmer((rootDim.1) ~ soilDim.1+FT + (1|Plot), data = soilrootcoord)
 check_model(root1soil1)
@@ -944,9 +909,8 @@ anova(root1soil2, type = 2)
 root1soil2ECM <- lmer((rootDim.1) ~ soilDim.2*BA_ECM + (1|Plot), data = soilrootcoord)
 check_model(root1soil2ECM)
 anova(root1soil2ECM, type = 2)
-```
 
-```{r}
+
 #soil PC1 vs root PC1
 soilrootcoord$FT <- factor(soilrootcoord$FT, level = c("Early secondary", "Mature secondary", "Old-growth"))
 
@@ -979,11 +943,10 @@ png(filename = "/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/
     width = 450, height = 600, units = "px")
 rootcollabFT_plot
 dev.off()
-```
+
 
 ##### Root PC2 (Conservation gradient)
 
-```{r}
 soilrootcoord$FT <- relevel(soilrootcoord$FT, ref = "Old-growth")
 
 #against Soil PC1
@@ -1004,9 +967,8 @@ anova(root2soil2, type = 2)
 root2soil2ECM <- lmer((rootDim.2) ~ soilDim.2*BA_ECM + (1|Plot), data = soilrootcoord)
 check_model(root2soil2ECM)
 anova(root2soil2ECM, type = 2)
-```
 
-```{r}
+
 soilrootcoord$FT <- factor(soilrootcoord$FT, level = c("Early secondary", "Mature secondary", "Old-growth"))
 
 #raw results
@@ -1038,11 +1000,10 @@ png(filename = "/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/
     width = 600, height = 350, units = "px")
 soil1root2pc
 dev.off()
-```
+
 
 #### Soil gradient vs root traits
 
-```{r}
 #combine soil PC1 with root data
 soilgradient <- soilcoord %>% dplyr::select(Plot, Direction, soilDim.1, soilDim.2)
 rootsoilgradientdf <- rootdata %>% right_join(soilgradient) %>% dplyr::select(-PercentNecro)
@@ -1074,11 +1035,10 @@ ggpairs(rootsoilgradientdf[,c("PME", "TotalRootBiomass", "SRL", "SRA", "D", "RTD
         lower = list(continuous = wrap("smooth", size = 0.1, alpha = 0.3)),
         diag = list(continuous = wrap("densityDiag", alpha = 0.3)),
         title = "Correlogram of Root Traits with Soil Fertility") + theme_bw()
-```
+
 
 #### LMMs: Root nutrients vs. each soil nutrient
 
-```{r}
 #rC vs. sC
 rCsoilmodel <- lmer((rC) ~ sC*FT + (1|Plot), data = CCNRalldata)
 check_model(rCsoilmodel)
@@ -1202,11 +1162,10 @@ anova(rMgCECsoilmodel, type = 2)
 
 rootnutrientplots <- (rC_plot | biomassTOC_plot)
 rootnutrientplots + plot_annotation(tag_levels = "A")
-```
+
 
 #### Plotting Soil fertility x FT vs each root trait
 
-```{r}
 #root PME
 PMEmodel <- lmer((PME) ~ soilDim.1 * FT + (1|Plot), data = rootsoilgradientdf)
 check_model(PMEmodel)
@@ -1358,13 +1317,12 @@ corr <- round(cor(rootsoilgradient_corr, use = "pairwise.complete.obs"),3)
 p.mat <- cor_pmat(rootsoilgradient_corr)
 ggcorrplot(corr, p.mat = p.mat, lab = TRUE,
            ggtheme = ggplot2::theme_classic, colors = c("#E46726", "white", "#6D9EC1"))
-```
+
 
 #### RDA of soil var vs root traits
 
 ##### Sort data
 
-```{r}
 # sort soil data
 soilparameters_RDA <- soilgradient
 soilparameters_RDA$Sample = paste(soilparameters_RDA$Plot, soilparameters_RDA$Direction, sep="-")
@@ -1402,11 +1360,10 @@ roottraits_RDA_trans <- decostand(roottraits_RDA, method = "standardize")
 round(apply(roottraits_RDA_trans, 2, mean), 1)
 #and scaled to have a standard deviation of 1
 apply(roottraits_RDA_trans, 2, sd)
-```
+
 
 ##### Run RDA
 
-```{r}
 RDA <- rda(roottraits_RDA_trans~FT + soilDim.1 + soilDim.2, data = soilparameters_RDA_trans)
 screeplot(RDA)
 
@@ -1423,19 +1380,17 @@ unconstrained_eig <- RDA$CA$eig/RDA$tot.chi*100
 expl_var <- c(constrained_eig, unconstrained_eig)
 barplot (expl_var[1:20], col = c(rep ('red', length (constrained_eig)), rep ('black', length (unconstrained_eig))),
          las = 2, ylab = '% variation')
-```
 
-```{r}
+
 #looking for model fit for constrained ordination
 RsquareAdj(RDA)$r.squared #unadjusted R^2
 RsquareAdj(RDA)$adj.r.squared #adjusted R^2 measures the unbiased amt of explained variation
 
 #so total is 8.25% of root variation explained by soils/FT
-```
+
 
 ##### RDA Plot
 
-```{r}
 # Triplot: three different entities in the plot: sites, response variables and explanatory variables (arrowheads are on the explanatory variables)
 
 #two types of sites scores
@@ -1453,9 +1408,8 @@ plot(RDA, scaling=2, main="Triplot RDA matrix ~ env - scaling 2 - wa scores")
 spe.sc <- scores(RDA, choices=1:2, scaling=2, display="sp")
 arrows(0,0,spe.sc[,1], spe.sc[,2], length=0, lty=1, col='red')
 text(RDA, "species", col="black", cex=0.3, scaling = "sites")
-```
 
-```{r}
+
 ## more aesthetic
 roottraits_RDA <- roottraits_RDA %>% rownames_to_column("Sample")
 
@@ -1484,11 +1438,10 @@ png(filename = "/Users/chungwingko/Library/Mobile Documents/com~apple~CloudDocs/
     width = 750, height = 650, units = "px")
 RDA_plot
 dev.off()
-```
+
 
 ##### Testing significance
 
-```{r}
 # Test of RDA result
 set.seed(123)  # For reproducibility
 perm_test <- anova.cca(RDA, permutations = 999, strata = soilparameters_RDA_trans$Plot)
@@ -1515,11 +1468,10 @@ print(perm_test)
 test_axis.adj <- perm_test
 test_axis.adj$`Pr(>F)` <- p.adjust (perm_test$`Pr(>F)`, method = 'holm')
 test_axis.adj
-```
+
 
 #### Variance partitioning
 
-```{r}
 # subset into FT vs. soil
 env_FT <- subset(soilparameters_RDA_trans, select = c(FT))
 env_soil <- subset(soilparameters_RDA_trans, select = c(soilDim.1, soilDim.2))
@@ -1533,11 +1485,10 @@ soilPC2_RDA <- rda(roottraits_RDA_trans~soilDim.2 + Condition(FT + soilDim.1), s
 ordiplot(FT_RDA, scaling = 2, main = "Soil RDA")
 ordiplot(soilPC1_RDA, scaling = 2, main = "FT RDA")
 ordiplot(soilPC2_RDA, scaling = 2, main = "FT RDA")
-```
+
 
 #### Variance Partitioning
 
-```{r}
 # Partition the variation in root traits
 spe.part.all <- varpart(roottraits_RDA_trans, env_FT, env_soil)
 spe.part.all$part  # access results!
@@ -1817,13 +1768,12 @@ draw.pairwise.venn(area1 = 7.9, area2 = 0.4, cross.area = 0.4, category = c("FT"
                    fill = c("#175f5d","#ae8548"), alpha = 0.4, 
                    rotation.degree = 180)
 dev.off()
-```
+
 
 #### Plot-level partial RDA + tree community
 
 ##### Prep data
 
-```{r}
 tree_counts <- data.scores %>% dplyr::select(Plot, NMDS1, NMDS2, NMDS3)
 
 # avg soil data across plot
@@ -1860,11 +1810,10 @@ roottraits_RDA_trans <- decostand(roottraits_RDA_avg, method = "standardize")
 round(apply(roottraits_RDA_trans, 2, mean), 1)
 #and scaled to have a standard deviation of 1
 apply(roottraits_RDA_trans, 2, sd)
-```
+
 
 ##### Partial RDA time
 
-```{r}
 # subset into FT vs. soil
 env_tree <- subset(combined_treesoil, select = c(NMDS1, NMDS2, NMDS3))
 env_soil <- subset(combined_treesoil, select = c(soilDim.1, soilDim.2))
@@ -1894,4 +1843,3 @@ anova.cca(rda(roottraits_RDA_trans, env_FT, env_soil)) #FT while controlling for
 anova.cca(rda(roottraits_RDA_trans, env_soil)) #soil without controlling for FT
 anova.cca(rda(roottraits_RDA_trans, env_soil, env_FT)) #soil while controlling for FT
 #all are significant
-```
